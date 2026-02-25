@@ -7,6 +7,7 @@ Supports PostgreSQL and MySQL, with MongoDB planned for a future release.
 
 import os
 import logging
+import socket
 
 import requests
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
@@ -24,6 +25,40 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 PMM_BASE_URL = os.environ.get("PMM_BASE_URL", "https://127.0.0.1:443")
+
+
+def get_public_ipv4():
+    """Detect the droplet's public IPv4 via the DO metadata service, falling
+    back to an external resolver, then to the default-route interface address."""
+    # DigitalOcean metadata endpoint (available on every Droplet)
+    try:
+        r = requests.get(
+            "http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address",
+            timeout=2,
+        )
+        if r.status_code == 200 and r.text.strip():
+            return r.text.strip()
+    except Exception:
+        pass
+
+    # Generic external resolver
+    for url in ("https://api.ipify.org", "https://ifconfig.me/ip"):
+        try:
+            r = requests.get(url, timeout=3)
+            if r.status_code == 200 and r.text.strip():
+                return r.text.strip()
+        except Exception:
+            continue
+
+    # Default-route interface address
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        addr = s.getsockname()[0]
+        s.close()
+        return addr
+    except Exception:
+        return "0.0.0.0"
 
 
 # ---------------------------------------------------------------------------
@@ -257,4 +292,13 @@ def engines():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     debug = os.environ.get("FLASK_DEBUG", "0") == "1"
+    public_ip = get_public_ipv4()
+
+    print(f"\n{'=' * 60}")
+    print(f"  PMM Integration Web Application")
+    print(f"  Listening on 0.0.0.0:{port}")
+    print(f"  Public URL:  http://{public_ip}:{port}")
+    print(f"  Local URL:   http://127.0.0.1:{port}")
+    print(f"{'=' * 60}\n")
+
     app.run(host="0.0.0.0", port=port, debug=debug)

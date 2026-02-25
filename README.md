@@ -28,7 +28,7 @@ Web application for connecting DigitalOcean Managed Databases to
 SSH into your PMM Droplet as root and run:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/cursor/pmm-integration-application-bffd/install.sh | sh
 ```
 
 This will:
@@ -43,7 +43,7 @@ This will:
 ### Option B — Download and Review First
 
 ```bash
-wget https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh
+wget https://raw.githubusercontent.com/pagombin-do/pmm-integration/cursor/pmm-integration-application-bffd/install.sh
 chmod +x install.sh
 less install.sh
 sudo ./install.sh
@@ -52,7 +52,7 @@ sudo ./install.sh
 ### Option C — Manual Install
 
 ```bash
-git clone https://github.com/pagombin-do/pmm-integration.git /opt/pmm-integration
+git clone -b cursor/pmm-integration-application-bffd https://github.com/pagombin-do/pmm-integration.git /opt/pmm-integration
 cd /opt/pmm-integration
 
 python3 -m venv venv
@@ -108,14 +108,14 @@ systemctl stop    pmm-integration
 Re-run the installer — it pulls the latest code and restarts the service:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/cursor/pmm-integration-application-bffd/install.sh | sh
 ```
 
 Or manually:
 
 ```bash
 cd /opt/pmm-integration
-git pull origin main
+git pull origin cursor/pmm-integration-application-bffd
 . venv/bin/activate
 pip install -r requirements.txt
 systemctl restart pmm-integration

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PMM Integration — DigitalOcean Managed Databases</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-inner">
+        <div class="logo-group">
+          <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          <div>
+            <h1 class="logo-title">PMM Integration</h1>
+            <p class="logo-subtitle">DigitalOcean Managed Databases &rarr; Percona PMM</p>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <!-- Stepper -->
+      <nav class="stepper" id="stepper">
+        <div class="step active" data-step="1"><span class="step-num">1</span><span class="step-label">Credentials</span></div>
+        <div class="step-line"></div>
+        <div class="step" data-step="2"><span class="step-num">2</span><span class="step-label">Engine</span></div>
+        <div class="step-line"></div>
+        <div class="step" data-step="3"><span class="step-num">3</span><span class="step-label">Databases</span></div>
+        <div class="step-line"></div>
+        <div class="step" data-step="4"><span class="step-num">4</span><span class="step-label">Monitor User</span></div>
+        <div class="step-line"></div>
+        <div class="step" data-step="5"><span class="step-num">5</span><span class="step-label">Integrate</span></div>
+      </nav>
+
+      <!-- Step panels -->
+      <div class="panels">
+
+        <!-- Step 1: Credentials -->
+        <section class="panel active" id="panel-1">
+          <h2 class="panel-title">Connect Your Accounts</h2>
+          <p class="panel-desc">Provide your DigitalOcean API token and PMM admin password so the application can discover your managed databases and register them with PMM.</p>
+
+          <div class="form-group">
+            <label for="do-token">DigitalOcean API Token</label>
+            <div class="input-wrap">
+              <input type="password" id="do-token" placeholder="dop_v1_xxxxxxxxxxxx" autocomplete="off">
+              <button type="button" class="toggle-vis" data-target="do-token" title="Toggle visibility">
+                <svg class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <small class="hint">Requires <strong>write</strong> permissions to Managed Databases for automatic monitoring-user creation. A read-only token works if you create the user manually.</small>
+            <div class="field-status" id="token-status"></div>
+          </div>
+
+          <div class="form-group">
+            <label for="pmm-password">PMM Admin Password</label>
+            <div class="input-wrap">
+              <input type="password" id="pmm-password" placeholder="Your PMM admin password" autocomplete="off">
+              <button type="button" class="toggle-vis" data-target="pmm-password" title="Toggle visibility">
+                <svg class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <small class="hint">The admin password you set when first logging in to PMM.</small>
+            <div class="field-status" id="pmm-status"></div>
+          </div>
+
+          <div class="panel-actions">
+            <div></div>
+            <button class="btn btn-primary" id="btn-validate">Validate &amp; Continue</button>
+          </div>
+        </section>
+
+        <!-- Step 2: Engine selection -->
+        <section class="panel" id="panel-2">
+          <h2 class="panel-title">Select Database Engine</h2>
+          <p class="panel-desc">Choose the type of DigitalOcean Managed Database you want to connect to PMM.</p>
+
+          <div class="engine-cards" id="engine-cards">
+            <!-- Filled by JS -->
+          </div>
+
+          <div class="form-group" style="margin-top:1.25rem">
+            <label class="checkbox-label">
+              <input type="checkbox" id="use-private">
+              <span>Use private (VPC) endpoint</span>
+            </label>
+            <small class="hint">Enable this if the PMM server is in the same VPC and region as the database. Do not enable if PMM cannot reach the database over the VPC network.</small>
+          </div>
+
+          <div class="panel-actions">
+            <button class="btn btn-ghost" data-back="1">Back</button>
+            <button class="btn btn-primary" id="btn-fetch-dbs" disabled>Fetch Databases</button>
+          </div>
+        </section>
+
+        <!-- Step 3: Select databases -->
+        <section class="panel" id="panel-3">
+          <h2 class="panel-title">Select Databases to Monitor</h2>
+          <p class="panel-desc">Choose the databases you want to add to PMM. Databases already being monitored are marked accordingly.</p>
+
+          <div id="db-list-wrap" class="db-list-wrap">
+            <div class="empty-state">Loading databases&hellip;</div>
+          </div>
+
+          <div class="panel-actions">
+            <button class="btn btn-ghost" data-back="2">Back</button>
+            <button class="btn btn-primary" id="btn-to-user" disabled>Continue</button>
+          </div>
+        </section>
+
+        <!-- Step 4: Monitoring user -->
+        <section class="panel" id="panel-4">
+          <h2 class="panel-title">Monitoring User</h2>
+          <p class="panel-desc">A dedicated monitoring user is required for PMM. You can have the application create it automatically via the DigitalOcean API or provide credentials for an existing user.</p>
+
+          <div id="user-sections">
+            <!-- Filled dynamically per selected DB -->
+          </div>
+
+          <div class="panel-actions">
+            <button class="btn btn-ghost" data-back="3">Back</button>
+            <button class="btn btn-primary" id="btn-to-integrate">Continue to Integration</button>
+          </div>
+        </section>
+
+        <!-- Step 5: Integration results -->
+        <section class="panel" id="panel-5">
+          <h2 class="panel-title">Integration</h2>
+          <p class="panel-desc" id="integration-desc">Review the integration status for each selected database below.</p>
+
+          <div id="integration-results">
+            <!-- Filled dynamically -->
+          </div>
+
+          <div class="panel-actions">
+            <button class="btn btn-ghost" id="btn-start-over">Start Over</button>
+            <div></div>
+          </div>
+        </section>
+
+      </div><!-- /panels -->
+    </main>
+
+    <footer class="app-footer">
+      <p>Percona PMM &middot; DigitalOcean Integration &middot; PostgreSQL &amp; MySQL supported &middot; MongoDB coming soon</p>
+    </footer>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toasts" class="toast-container"></div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

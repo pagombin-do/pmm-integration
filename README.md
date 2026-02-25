@@ -28,7 +28,7 @@ Web application for connecting DigitalOcean Managed Databases to
 SSH into your PMM Droplet as root and run:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh | sh
 ```
 
 This will:
@@ -120,7 +120,7 @@ SSH into the PMM Droplet and re-run the installer — it will pull the latest
 code and restart the service:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh | sh
 ```
 
 Or manually:
@@ -128,7 +128,7 @@ Or manually:
 ```bash
 cd /opt/pmm-integration
 git pull origin main
-source venv/bin/activate
+. venv/bin/activate
 pip install -r requirements.txt
 systemctl restart pmm-integration
 ```

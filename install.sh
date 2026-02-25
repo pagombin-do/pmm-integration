@@ -1,10 +1,10 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # ---------------------------------------------------------------------------
 # PMM Integration Installer
 # Downloads and installs the PMM Integration web application on a PMM server.
 #
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh | bash
+#   curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh | sh
 #
 # Or download first, then run:
 #   wget https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh
@@ -12,7 +12,7 @@
 #   ./install.sh
 # ---------------------------------------------------------------------------
 
-set -euo pipefail
+set -eu
 
 REPO_URL="https://github.com/pagombin-do/pmm-integration.git"
 INSTALL_DIR="/opt/pmm-integration"
@@ -24,10 +24,10 @@ BRANCH="main"
 # Helpers
 # ---------------------------------------------------------------------------
 
-info()  { echo -e "\033[1;34m[INFO]\033[0m  $*"; }
-ok()    { echo -e "\033[1;32m[OK]\033[0m    $*"; }
-warn()  { echo -e "\033[1;33m[WARN]\033[0m  $*"; }
-fail()  { echo -e "\033[1;31m[ERROR]\033[0m $*"; exit 1; }
+info()  { printf '\033[1;34m[INFO]\033[0m  %s\n' "$*"; }
+ok()    { printf '\033[1;32m[OK]\033[0m    %s\n' "$*"; }
+warn()  { printf '\033[1;33m[WARN]\033[0m  %s\n' "$*"; }
+fail()  { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*"; exit 1; }
 
 require_cmd() {
     command -v "$1" >/dev/null 2>&1 || return 1
@@ -80,7 +80,7 @@ ok "Application code ready at $INSTALL_DIR"
 info "Setting up Python virtual environment..."
 
 python3 -m venv "$INSTALL_DIR/venv"
-source "$INSTALL_DIR/venv/bin/activate"
+. "$INSTALL_DIR/venv/bin/activate"
 
 pip install --upgrade pip -q
 pip install -r "$INSTALL_DIR/requirements.txt" -q

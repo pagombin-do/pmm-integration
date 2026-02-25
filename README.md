@@ -28,7 +28,7 @@ Web application for connecting DigitalOcean Managed Databases to
 SSH into your PMM Droplet as root and run:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh | sh
 ```
 
 This will:
@@ -36,33 +36,29 @@ This will:
 1. Install Python 3, pip, venv, and git (if not already present)
 2. Clone the repository into `/opt/pmm-integration`
 3. Create a Python virtual environment and install dependencies
-4. Create and start a `pmm-integration` systemd service on port **5000**
-5. Print the public URL you can open in your browser
+4. Create and start a `pmm-integration` systemd service (localhost only)
+5. Configure Nginx to reverse-proxy `/integration/` to the Flask backend
+6. Print the public URL you can open in your browser
 
 ### Option B — Download and Review First
 
 ```bash
 wget https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh
 chmod +x install.sh
-# review the script
 less install.sh
-# run it
 sudo ./install.sh
 ```
 
 ### Option C — Manual Install
 
 ```bash
-# Clone the repo
 git clone https://github.com/pagombin-do/pmm-integration.git /opt/pmm-integration
 cd /opt/pmm-integration
 
-# Create venv and install dependencies
 python3 -m venv venv
-source venv/bin/activate
+. venv/bin/activate
 pip install -r requirements.txt
 
-# Start the application
 python3 app.py
 ```
 
@@ -70,57 +66,49 @@ python3 app.py
 
 ## Accessing the UI
 
-After installation the app listens on **`0.0.0.0:5000`** — accessible on the
-Droplet's public IPv4 address:
+After installation the app is served through the **existing Nginx** that ships
+with the PMM Marketplace image — no extra ports or firewall rules are needed:
 
 ```
-http://<your_droplet_public_ipv4>:5000
+https://<your_droplet_public_ipv4>/integration/
 ```
 
-The startup log will print the detected public IP automatically:
+### How it works
+
+The PMM 1-Click image already runs Nginx on ports 80/443 to serve the PMM UI.
+The installer adds a small location block that proxies `/integration/` to the
+Flask backend on `127.0.0.1:5000`:
 
 ```
-============================================================
-  PMM Integration Web Application
-  Listening on 0.0.0.0:5000
-  Public URL:  http://203.0.113.42:5000
-  Local URL:   http://127.0.0.1:5000
-============================================================
+Browser                    Nginx (443)              Flask (127.0.0.1:5000)
+  │                           │                           │
+  ├── GET /integration/ ─────►├── proxy_pass ────────────►├── /
+  │                           │   X-Script-Name:          │
+  │◄──────────────────────────┤   /integration            │
 ```
 
-> **Firewall note:** If you have a DigitalOcean Cloud Firewall or `ufw`
-> enabled, ensure port **5000** (TCP) is open for inbound traffic from your
-> IP address.
+The Flask app never listens on a public interface — all external traffic flows
+through Nginx, sharing the same TLS certificate PMM already uses.
 
 ---
 
 ## Service Management
 
-When installed via the install script, the app runs as a systemd service:
-
 ```bash
-# Check status
-systemctl status pmm-integration
-
-# View live logs
+systemctl status  pmm-integration
 journalctl -u pmm-integration -f
-
-# Restart after config changes
 systemctl restart pmm-integration
-
-# Stop
-systemctl stop pmm-integration
+systemctl stop    pmm-integration
 ```
 
 ---
 
 ## Updating
 
-SSH into the PMM Droplet and re-run the installer — it will pull the latest
-code and restart the service:
+Re-run the installer — it pulls the latest code and restarts the service:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh | sh
 ```
 
 Or manually:
@@ -128,7 +116,7 @@ Or manually:
 ```bash
 cd /opt/pmm-integration
 git pull origin main
-source venv/bin/activate
+. venv/bin/activate
 pip install -r requirements.txt
 systemctl restart pmm-integration
 ```
@@ -139,27 +127,19 @@ systemctl restart pmm-integration
 
 | Variable                  | Description                              | Default                    |
 |---------------------------|------------------------------------------|----------------------------|
-| `PORT`                    | HTTP listen port                         | `5000`                     |
+| `PORT`                    | Internal listen port                     | `5000`                     |
+| `LISTEN_HOST`             | Bind address                             | `127.0.0.1`               |
 | `FLASK_DEBUG`             | Set to `1` for debug mode                | `0`                        |
 | `FLASK_SECRET_KEY`        | Flask session secret                     | Random bytes               |
 | `PMM_BASE_URL`            | PMM server base URL                      | `https://127.0.0.1:443`   |
-| `DIGITALOCEAN_API_TOKEN`  | Pre-set DO token (skip UI prompt)        | —                          |
-| `PMM_ADMIN_PASSWORD`      | Pre-set PMM password (skip UI prompt)    | —                          |
 
-To override a variable for the systemd service, edit the unit file:
+To override a variable for the systemd service:
 
 ```bash
 systemctl edit pmm-integration
 ```
 
-Add overrides under `[Service]`, for example:
-
-```ini
-[Service]
-Environment=PORT=8080
-```
-
-Then `systemctl restart pmm-integration`.
+Add overrides under `[Service]`, then `systemctl restart pmm-integration`.
 
 ---
 
@@ -176,6 +156,34 @@ Then `systemctl restart pmm-integration`.
 5. **Integrate** — The app runs `pmm-admin add` with TLS and query analytics
    enabled.  Post-integration steps are displayed so you can grant the
    necessary monitoring permissions on each database.
+
+---
+
+## Nginx Configuration Details
+
+The installer creates two things:
+
+1. **`/etc/nginx/pmm-integration.conf`** — a location snippet:
+
+```nginx
+location /integration/ {
+    proxy_pass         http://127.0.0.1:5000/;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Real-IP         $remote_addr;
+    proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+    proxy_set_header   X-Script-Name     /integration;
+    proxy_http_version 1.1;
+    proxy_read_timeout 90s;
+}
+```
+
+2. **An `include` directive** injected into the PMM Nginx server block
+   (`/etc/nginx/conf.d/pmm.conf` or equivalent) that loads the snippet above.
+
+A backup of the original config is saved before any modification. If the
+installer cannot locate the Nginx config file it will print the snippet and
+ask you to include it manually.
 
 ---
 
@@ -203,9 +211,8 @@ Then `systemctl restart pmm-integration`.
 
 ## Security Considerations
 
-- The web UI transmits your DO API token and PMM password to the backend over
-  the network.  In production, place the app behind a TLS reverse proxy
-  (nginx, Caddy) or restrict access by IP with a firewall.
+- The Flask backend listens only on `127.0.0.1` — it is not directly reachable
+  from the internet.  All external access goes through Nginx with TLS.
 - Rotate API tokens periodically and use least-privilege tokens when possible.
 - Restrict DigitalOcean Trusted Sources to only the PMM Droplet IP.
 - Change the default PMM `admin` password immediately after deployment.

@@ -18,7 +18,26 @@ from integrations.base import DO_API_BASE, PmmServer
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
+
+class ReverseProxied:
+    """WSGI middleware that honours the X-Script-Name header set by a reverse
+    proxy (Nginx) so Flask generates correct URLs under a sub-path."""
+
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        script_name = environ.get("HTTP_X_SCRIPT_NAME", "")
+        if script_name:
+            environ["SCRIPT_NAME"] = script_name
+            path_info = environ.get("PATH_INFO", "")
+            if path_info.startswith(script_name):
+                environ["PATH_INFO"] = path_info[len(script_name):]
+        return self.wsgi_app(environ, start_response)
+
+
 app = Flask(__name__)
+app.wsgi_app = ReverseProxied(app.wsgi_app)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(32))
 
 logging.basicConfig(level=logging.INFO)
@@ -291,14 +310,15 @@ def engines():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
+    host = os.environ.get("LISTEN_HOST", "127.0.0.1")
     debug = os.environ.get("FLASK_DEBUG", "0") == "1"
     public_ip = get_public_ipv4()
 
     print(f"\n{'=' * 60}")
     print(f"  PMM Integration Web Application")
-    print(f"  Listening on 0.0.0.0:{port}")
-    print(f"  Public URL:  http://{public_ip}:{port}")
+    print(f"  Listening on {host}:{port}")
+    print(f"  Public URL:  https://{public_ip}/integration/")
     print(f"  Local URL:   http://127.0.0.1:{port}")
     print(f"{'=' * 60}\n")
 
-    app.run(host="0.0.0.0", port=port, debug=debug)
+    app.run(host=host, port=port, debug=debug)

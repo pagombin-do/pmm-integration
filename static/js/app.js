@@ -27,6 +27,8 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => [...document.querySelectorAll(sel)];
 
+  const BASE = document.body.dataset.basePath || "";
+
   const panels = $$(".panel");
   const steps = $$(".step");
 
@@ -43,7 +45,7 @@
   }
 
   async function api(path, body) {
-    const res = await fetch(path, {
+    const res = await fetch(BASE + path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -158,7 +160,7 @@
   // -----------------------------------------------------------------------
 
   async function loadEngines() {
-    const res = await fetch("/api/engines");
+    const res = await fetch(BASE + "/api/engines");
     const data = await res.json();
     const container = $("#engine-cards");
     container.innerHTML = "";

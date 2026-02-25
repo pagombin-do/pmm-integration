@@ -12,7 +12,7 @@
 #   - performs a health check after starting the service
 #
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh | sh
+#   curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/cursor/pmm-integration-application-bffd/install.sh | sh
 # ---------------------------------------------------------------------------
 
 set -eu
@@ -21,7 +21,7 @@ REPO_URL="https://github.com/pagombin-do/pmm-integration.git"
 INSTALL_DIR="/opt/pmm-integration"
 SERVICE_NAME="pmm-integration"
 PORT="${PORT:-5000}"
-BRANCH="main"
+BRANCH="${BRANCH:-cursor/pmm-integration-application-bffd}"
 NGINX_SNIPPET="/etc/nginx/pmm-integration.conf"
 VERSION_FILE="$INSTALL_DIR/.installed-version"
 VENV_DIR="$INSTALL_DIR/venv"

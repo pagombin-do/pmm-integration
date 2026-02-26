@@ -83,7 +83,7 @@ for cmd in python3 git openssl; do
     fi
 done
 
-if ! python3 -c "import venv" >/dev/null 2>&1; then
+if ! python3 -c "import ensurepip" >/dev/null 2>&1; then
     NEED_APT=true
 fi
 

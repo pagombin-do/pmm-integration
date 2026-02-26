@@ -148,7 +148,7 @@ def list_databases():
     filtered = [d for d in all_dbs if d.get("engine") == engine_filter]
 
     pmm = PmmServer(base_url=PMM_BASE_URL, password=pmm_password)
-    monitored_addresses = set()
+    monitored_map = {}
     try:
         svcs = pmm.list_services()
         for key in ("postgresql", "mysql", "mongodb", "services"):
@@ -159,7 +159,7 @@ def list_databases():
                         addr = s.get("address", "")
                         port = str(s.get("port", ""))
                         if addr:
-                            monitored_addresses.add(f"{addr}:{port}")
+                            monitored_map[f"{addr}:{port}"] = s.get("service_name", "")
     except Exception:
         pass
 
@@ -175,7 +175,8 @@ def list_databases():
             host = conn.get("host", "")
             port = conn.get("port", "")
 
-        monitored = f"{host}:{port}" in monitored_addresses
+        addr_key = f"{host}:{port}"
+        pmm_service_name = monitored_map.get(addr_key, "")
 
         results.append({
             "id": db["id"],
@@ -186,7 +187,8 @@ def list_databases():
             "port": port,
             "num_nodes": db.get("num_nodes", 1),
             "status": db.get("status", "unknown"),
-            "monitored": monitored,
+            "monitored": bool(pmm_service_name),
+            "pmm_service_name": pmm_service_name,
         })
 
     return jsonify(ok=True, databases=results)
@@ -264,6 +266,32 @@ def integrate():
         message=result.get("message", ""),
         output=result.get("output", ""),
         post_steps=post_steps,
+    )
+
+
+# ---------------------------------------------------------------------------
+# API — remove database from PMM
+# ---------------------------------------------------------------------------
+
+
+@app.route("/api/remove", methods=["POST"])
+def remove():
+    data = request.get_json(force=True)
+    pmm_password = data.get("pmm_password", "")
+    service_name = data.get("service_name", "").strip()
+
+    if not pmm_password or not service_name:
+        return jsonify(ok=False, message="Missing pmm_password or service_name."), 400
+
+    from integrations.base import BaseIntegration
+
+    pmm = PmmServer(base_url=PMM_BASE_URL, password=pmm_password)
+    result = BaseIntegration.remove_from_pmm(pmm, service_name)
+
+    return jsonify(
+        ok=result["success"],
+        message=result.get("message", ""),
+        output=result.get("output", ""),
     )
 
 

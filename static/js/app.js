@@ -214,6 +214,10 @@
   // Step 3 — Database selection
   // -----------------------------------------------------------------------
 
+  function isOnline(db) {
+    return db.status === "online";
+  }
+
   function renderDbList() {
     const wrap = $("#db-list-wrap");
     const dbs = state.databases;
@@ -224,35 +228,47 @@
       return;
     }
 
-    const unmonitored = dbs.filter((d) => !d.monitored);
+    const selectable = dbs.filter((d) => !d.monitored && isOnline(d));
 
     let html = "";
 
-    if (unmonitored.length > 1) {
+    if (selectable.length > 1) {
       html += `
         <div class="select-all-row">
           <input type="checkbox" class="db-check" id="select-all">
-          <label for="select-all">Select all (${unmonitored.length})</label>
+          <label for="select-all">Select all available (${selectable.length})</label>
         </div>`;
     }
 
     dbs.forEach((db, idx) => {
-      const checked = "";
-      const disabled = db.monitored ? "disabled" : "";
-      const rowClass = db.monitored ? "db-row monitored" : "db-row";
+      const online = isOnline(db);
+      const canSelect = !db.monitored && online;
+      const disabled = canSelect ? "" : "disabled";
+
+      let rowClass = "db-row";
+      if (db.monitored) rowClass += " monitored";
+      else if (!online) rowClass += " offline";
+
+      let badge = "";
+      if (db.monitored) {
+        badge = `<button class="btn btn-sm btn-danger-ghost btn-remove" data-idx="${idx}" data-service="${db.pmm_service_name}">Remove</button>`;
+      } else if (!online) {
+        badge = `<span class="offline-badge">${db.status}</span>`;
+      }
+
       html += `
         <div class="${rowClass}" data-idx="${idx}">
-          <input type="checkbox" class="db-check" data-idx="${idx}" ${checked} ${disabled}>
+          <input type="checkbox" class="db-check" data-idx="${idx}" ${disabled}>
           <div class="db-info">
             <div class="db-name">${db.name}</div>
             <div class="db-meta">
               <span class="db-tag">${db.region}</span>
               <span class="db-tag">${db.host}:${db.port}</span>
               <span class="db-tag">${db.num_nodes} node${db.num_nodes > 1 ? "s" : ""}</span>
-              <span class="db-tag">${db.status}</span>
+              <span class="db-tag">${online ? db.status : '<strong style="color:var(--color-danger)">' + db.status + '</strong>'}</span>
             </div>
           </div>
-          ${db.monitored ? '<span class="monitored-badge">Monitored</span>' : ""}
+          ${badge}
         </div>`;
     });
 
@@ -272,16 +288,46 @@
       cb.addEventListener("change", syncDbSelection);
     });
 
-    wrap.querySelectorAll(".db-row:not(.monitored)").forEach((row) => {
+    wrap.querySelectorAll(".db-row:not(.monitored):not(.offline)").forEach((row) => {
       row.addEventListener("click", (e) => {
         if (e.target.classList.contains("db-check")) return;
+        if (e.target.closest(".btn-remove")) return;
         const cb = row.querySelector(".db-check");
         cb.checked = !cb.checked;
         syncDbSelection();
       });
     });
 
+    wrap.querySelectorAll(".btn-remove").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        handleRemove(+btn.dataset.idx, btn.dataset.service, btn);
+      });
+    });
+
     syncDbSelection();
+  }
+
+  async function handleRemove(idx, serviceName, btn) {
+    if (!confirm(`Remove "${serviceName}" from PMM monitoring?`)) return;
+
+    setLoading(btn, true);
+
+    const res = await api("/api/remove", {
+      pmm_password: state.pmmPassword,
+      service_name: serviceName,
+    });
+
+    setLoading(btn, false);
+
+    if (res.ok) {
+      state.databases[idx].monitored = false;
+      state.databases[idx].pmm_service_name = "";
+      renderDbList();
+      toast(`Removed "${serviceName}" from PMM.`, "success");
+    } else {
+      toast(res.message || "Failed to remove service.", "error");
+    }
   }
 
   function syncDbSelection() {

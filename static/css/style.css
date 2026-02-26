@@ -288,6 +288,28 @@ body {
 .field-status.err { color: var(--color-danger); }
 .field-status.loading { color: var(--color-text-muted); }
 
+.security-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.85rem 1rem;
+  background: var(--color-primary-light);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: var(--radius);
+  margin-bottom: 1.5rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.security-notice-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--color-primary);
+  margin-top: 0.1rem;
+}
+
 /* ========================================================================
    Buttons
    ======================================================================== */
@@ -349,6 +371,10 @@ body {
   background: transparent;
   color: var(--color-danger);
   border: 1px solid var(--color-danger);
+}
+
+.btn-danger-ghost:hover:not(:disabled) {
+  background: var(--color-danger-light);
 }
 
 /* Spinner inside button */
@@ -493,6 +519,25 @@ body {
   background: var(--color-success-light);
   color: var(--color-success);
   white-space: nowrap;
+}
+
+.offline-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--color-danger-light);
+  color: var(--color-danger);
+  white-space: nowrap;
+}
+
+.db-row.offline {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.db-row.offline:hover {
+  background: transparent;
 }
 
 .empty-state {

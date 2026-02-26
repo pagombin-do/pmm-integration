@@ -316,6 +316,7 @@
     const res = await api("/api/remove", {
       pmm_password: state.pmmPassword,
       service_name: serviceName,
+      engine: state.selectedEngine,
     });
 
     setLoading(btn, false);
@@ -521,10 +522,26 @@
           '<path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
         output.textContent = res.output || "Successfully added to PMM.";
 
-        if (res.post_steps && res.post_steps.length) {
+        if (res.post_steps) {
           const ps = document.createElement("div");
           ps.className = "post-steps";
-          ps.innerHTML = `<div class="post-steps-title">Post-Integration Steps</div><pre>${res.post_steps.join("\n")}</pre>`;
+          let html = '<div class="post-steps-title">Post-Integration Steps</div>';
+
+          if (res.post_steps.steps && res.post_steps.steps.length) {
+            res.post_steps.steps.forEach((step) => {
+              html += `<div class="post-step-item">`;
+              html += `<div class="post-step-heading">${step.title}</div>`;
+              html += `<p class="post-step-desc">${step.description}</p>`;
+              html += `<pre class="post-step-cmd">${step.command}</pre>`;
+              html += `</div>`;
+            });
+          }
+
+          if (res.post_steps.note) {
+            html += `<div class="post-step-note">${res.post_steps.note}</div>`;
+          }
+
+          ps.innerHTML = html;
           card.appendChild(ps);
         }
       } else {

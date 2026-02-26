@@ -274,19 +274,32 @@ def integrate():
 # ---------------------------------------------------------------------------
 
 
+PMM_SERVICE_TYPE_MAP = {
+    "pg": "postgresql",
+    "postgresql": "postgresql",
+    "mysql": "mysql",
+    "mongodb": "mongodb",
+}
+
+
 @app.route("/api/remove", methods=["POST"])
 def remove():
     data = request.get_json(force=True)
     pmm_password = data.get("pmm_password", "")
     service_name = data.get("service_name", "").strip()
+    engine = data.get("engine", "").strip()
 
-    if not pmm_password or not service_name:
-        return jsonify(ok=False, message="Missing pmm_password or service_name."), 400
+    if not pmm_password or not service_name or not engine:
+        return jsonify(ok=False, message="Missing pmm_password, service_name, or engine."), 400
+
+    service_type = PMM_SERVICE_TYPE_MAP.get(engine)
+    if not service_type:
+        return jsonify(ok=False, message=f"Unsupported engine: {engine}"), 400
 
     from integrations.base import BaseIntegration
 
     pmm = PmmServer(base_url=PMM_BASE_URL, password=pmm_password)
-    result = BaseIntegration.remove_from_pmm(pmm, service_name)
+    result = BaseIntegration.remove_from_pmm(pmm, service_type, service_name)
 
     return jsonify(
         ok=result["success"],

@@ -30,18 +30,33 @@ class PostgreSQLIntegration(BaseIntegration):
         host = instance["host"]
         port = instance["port"]
         username = instance.get("username", "pmm_monitor")
-        return [
-            "Run the following on the PMM server to enable query analytics:",
-            f'  apt install -y postgresql-client',
-            (
-                f'  psql "host={host} port={port} dbname=defaultdb user=doadmin sslmode=require" '
-                f'-c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements; '
-                f"GRANT SELECT ON pg_stat_statements TO {username}; "
-                f'GRANT pg_read_all_stats TO {username};"'
+        return {
+            "steps": [
+                {
+                    "title": "Step 1 — Install the PostgreSQL client",
+                    "description": "Run this on the PMM server to install the psql command-line tool (skip if already installed):",
+                    "command": "apt install -y postgresql-client",
+                },
+                {
+                    "title": "Step 2 — Enable statistics and grant permissions",
+                    "description": (
+                        "Connect to the database and enable pg_stat_statements for "
+                        "query analytics, then grant read-only monitoring permissions "
+                        f"to the {username} user:"
+                    ),
+                    "command": (
+                        f'psql "host={host} port={port} dbname=defaultdb '
+                        f'user=doadmin sslmode=require" '
+                        f'-c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements; '
+                        f"GRANT SELECT ON pg_stat_statements TO {username}; "
+                        f'GRANT pg_read_all_stats TO {username};"'
+                    ),
+                },
+            ],
+            "note": (
+                "Node Summary metrics (CPU, RAM, disk) are not available for "
+                "DigitalOcean Managed PostgreSQL because node_exporter cannot be "
+                "installed on the managed host. Database metrics and query "
+                "analytics will still be collected."
             ),
-            "",
-            "Note: Node Summary metrics (CPU, RAM, disk) are not available for",
-            "DigitalOcean Managed PostgreSQL because node_exporter cannot be",
-            "installed on the managed host. Database metrics and query analytics",
-            "will still be collected.",
-        ]
+        }

@@ -130,7 +130,9 @@ class BaseIntegration(ABC):
             return {"success": False, "message": str(exc)}
 
     @staticmethod
-    def remove_from_pmm(pmm, service_name):
+    def remove_from_pmm(pmm, service_type, service_name):
+        """Remove a service from PMM.  service_type is one of:
+        postgresql, mysql, mongodb, proxysql, haproxy, external."""
         pmm_admin = pmm.get_pmm_admin_cmd()
         if not pmm_admin:
             return {
@@ -141,7 +143,9 @@ class BaseIntegration(ABC):
         server_url = pmm.build_server_url()
         cmd = pmm_admin + [
             "remove",
+            service_type,
             service_name,
+            "--force",
             f"--server-url={server_url}",
             "--server-insecure-tls",
         ]

@@ -452,9 +452,24 @@
       btn.textContent = "User Created";
       btn.disabled = true;
       toast(`User "${res.username}" created for ${db.name}`, "success");
+    } else if (res.error_code === "user_exists") {
+      const username = res.username || "pmm_monitor";
+      statusEl.className = "user-status";
+      statusEl.innerHTML = `
+        <div class="user-exists-notice">
+          <p class="user-exists-title">User "${username}" already exists on "${db.name}"</p>
+          <p>Switch to <strong>Manual</strong> mode above and enter the existing user's credentials.</p>
+          <p class="user-exists-help-title">How to find the password:</p>
+          <ul>
+            <li><strong>DigitalOcean UI:</strong> Go to <a href="https://cloud.digitalocean.com/databases" target="_blank" rel="noopener">Databases</a> &rarr; select <em>${db.name}</em> &rarr; <em>Users &amp; Databases</em> tab &rarr; click <em>show-password</em> next to <strong>${username}</strong>.</li>
+            <li><strong>DigitalOcean API:</strong><br><code>curl -s -H "Authorization: Bearer $DIGITALOCEAN_API_TOKEN" "https://api.digitalocean.com/v2/databases/${db.id}/users/${username}" | jq '.user.password'</code></li>
+          </ul>
+        </div>
+      `;
+      state.userCredentials[key] = { mode: "auto", username: username, password: "", ready: false };
     } else {
-      fieldStatus(statusEl, "err", res.message);
-      toast(res.message, "error");
+      fieldStatus(statusEl, "err", res.message || "Failed to create user.");
+      toast(res.message || "Failed to create user.", "error");
     }
   }
 

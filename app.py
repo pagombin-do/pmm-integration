@@ -219,7 +219,13 @@ def create_user():
     try:
         result = integration.create_monitoring_user(token, db_id, db_name, username)
         if "error" in result:
-            return jsonify(ok=False, message=result["error"]), 409
+            return jsonify(
+                ok=False,
+                error_code=result["error"],
+                username=result.get("username", username),
+                db_name=result.get("db_name", db_name),
+                db_id=result.get("db_id", db_id),
+            ), 409
         return jsonify(ok=True, username=result["username"], password=result["password"])
     except requests.exceptions.HTTPError as exc:
         status = exc.response.status_code if exc.response is not None else 500

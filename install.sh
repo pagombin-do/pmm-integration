@@ -7,9 +7,11 @@
 #   - stops the running service before touching code or dependencies
 #   - pulls the latest code (or re-clones if the repo is corrupt)
 #   - rebuilds the venv only when Python or requirements change
-#   - writes / updates the systemd unit and Nginx config idempotently
-#   - validates Nginx before reloading
+#   - generates a self-signed TLS certificate (if one does not exist)
+#   - writes / updates the systemd unit idempotently
 #   - performs a health check after starting the service
+#
+# The app serves HTTPS directly on port 8443 — no Nginx required.
 #
 # Usage:
 #   curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh | sh
@@ -20,9 +22,9 @@ set -eu
 REPO_URL="https://github.com/pagombin-do/pmm-integration.git"
 INSTALL_DIR="/opt/pmm-integration"
 SERVICE_NAME="pmm-integration"
-PORT="${PORT:-5000}"
+PORT="${PORT:-8443}"
 BRANCH="main"
-NGINX_SNIPPET="/etc/nginx/pmm-integration.conf"
+CERT_DIR="$INSTALL_DIR/certs"
 VERSION_FILE="$INSTALL_DIR/.installed-version"
 VENV_DIR="$INSTALL_DIR/venv"
 UNIT_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
@@ -74,7 +76,7 @@ fi
 # ---------------------------------------------------------------------------
 
 NEED_APT=false
-for cmd in python3 git; do
+for cmd in python3 git openssl; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
         NEED_APT=true
         break
@@ -88,7 +90,7 @@ fi
 if [ "$NEED_APT" = true ]; then
     info "Installing system dependencies..."
     apt-get update -qq
-    apt-get install -y -qq python3 python3-pip python3-venv git > /dev/null 2>&1
+    apt-get install -y -qq python3 python3-pip python3-venv git openssl > /dev/null 2>&1
     ok "System dependencies installed."
 else
     ok "System dependencies already present — skipped."
@@ -113,7 +115,7 @@ if [ -d "$INSTALL_DIR/.git" ]; then
     cd "$INSTALL_DIR"
     git fetch origin "$BRANCH" --depth 1
     git reset --hard "origin/$BRANCH"
-    git clean -fdx --exclude=venv --exclude=.installed-version
+    git clean -fdx --exclude=venv --exclude=certs --exclude=.installed-version --exclude=.requirements-hash
 else
     info "Cloning repository into $INSTALL_DIR..."
     git clone --branch "$BRANCH" --depth 1 "$REPO_URL" "$INSTALL_DIR"
@@ -179,6 +181,41 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# TLS certificate — generate a self-signed cert if none exists
+# ---------------------------------------------------------------------------
+
+CERT_FILE="$CERT_DIR/cert.pem"
+KEY_FILE="$CERT_DIR/key.pem"
+
+if [ -f "$CERT_FILE" ] && [ -f "$KEY_FILE" ]; then
+    ok "TLS certificate already exists — skipped."
+else
+    info "Generating self-signed TLS certificate..."
+    mkdir -p "$CERT_DIR"
+
+    PUBLIC_IP_FOR_CERT=$(curl -sf --max-time 3 http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address 2>/dev/null || true)
+    if [ -z "$PUBLIC_IP_FOR_CERT" ]; then
+        PUBLIC_IP_FOR_CERT=$(curl -sf --max-time 3 https://api.ipify.org 2>/dev/null || true)
+    fi
+
+    SAN_ENTRY=""
+    if [ -n "$PUBLIC_IP_FOR_CERT" ]; then
+        SAN_ENTRY="IP:${PUBLIC_IP_FOR_CERT},"
+    fi
+
+    openssl req -x509 -newkey rsa:2048 -nodes \
+        -keyout "$KEY_FILE" \
+        -out "$CERT_FILE" \
+        -days 3650 \
+        -subj "/CN=pmm-integration" \
+        -addext "subjectAltName=${SAN_ENTRY}IP:127.0.0.1,DNS:localhost" \
+        2>/dev/null
+
+    chmod 600 "$KEY_FILE"
+    ok "Self-signed TLS certificate generated (valid 10 years)."
+fi
+
+# ---------------------------------------------------------------------------
 # systemd service
 # ---------------------------------------------------------------------------
 
@@ -191,7 +228,8 @@ Type=simple
 WorkingDirectory=$INSTALL_DIR
 ExecStart=$INSTALL_DIR/venv/bin/python3 $INSTALL_DIR/app.py
 Environment=PORT=$PORT
-Environment=LISTEN_HOST=127.0.0.1
+Environment=LISTEN_HOST=0.0.0.0
+Environment=TLS_CERT_DIR=$CERT_DIR
 Environment=PMM_BASE_URL=https://127.0.0.1:443
 Restart=on-failure
 RestartSec=5
@@ -224,104 +262,6 @@ fi
 systemctl enable "$SERVICE_NAME" --quiet 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
-# Nginx reverse-proxy configuration
-# ---------------------------------------------------------------------------
-
-NGINX_SNIPPET_CONTENTS='# PMM Integration reverse proxy — managed by install.sh
-location /integration/ {
-    proxy_pass         http://127.0.0.1:5000/;
-    proxy_set_header   Host              $host;
-    proxy_set_header   X-Real-IP         $remote_addr;
-    proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
-    proxy_set_header   X-Forwarded-Proto $scheme;
-    proxy_set_header   X-Script-Name     /integration;
-    proxy_http_version 1.1;
-    proxy_read_timeout 90s;
-}'
-
-NGINX_CHANGED=false
-
-if [ -f "$NGINX_SNIPPET" ]; then
-    EXISTING_SNIPPET=$(cat "$NGINX_SNIPPET")
-    if [ "$EXISTING_SNIPPET" != "$NGINX_SNIPPET_CONTENTS" ]; then
-        NGINX_CHANGED=true
-        info "Updating Nginx snippet (contents changed)..."
-    else
-        ok "Nginx snippet unchanged — skipped."
-    fi
-else
-    NGINX_CHANGED=true
-    info "Creating Nginx snippet at $NGINX_SNIPPET..."
-fi
-
-if [ "$NGINX_CHANGED" = true ]; then
-    printf '%s\n' "$NGINX_SNIPPET_CONTENTS" > "$NGINX_SNIPPET"
-    ok "Nginx snippet written."
-fi
-
-# Ensure the include directive is present in the PMM Nginx config
-NGINX_CONF=""
-for candidate in \
-    /etc/nginx/conf.d/pmm.conf \
-    /etc/nginx/conf.d/default.conf \
-    /etc/nginx/nginx.conf; do
-    if [ -f "$candidate" ]; then
-        NGINX_CONF="$candidate"
-        break
-    fi
-done
-
-if [ -z "$NGINX_CONF" ]; then
-    warn "Could not locate an Nginx config file."
-    warn "Add the following inside your Nginx server block:"
-    warn "  include $NGINX_SNIPPET;"
-else
-    if grep -qF "pmm-integration.conf" "$NGINX_CONF" 2>/dev/null; then
-        ok "Nginx config already includes pmm-integration snippet."
-    else
-        info "Injecting include into $NGINX_CONF ..."
-        cp "$NGINX_CONF" "${NGINX_CONF}.bak.$(date +%s)"
-
-        awk -v snippet="$NGINX_SNIPPET" '
-        {
-            lines[NR] = $0
-        }
-        END {
-            last_brace = 0
-            for (i = NR; i >= 1; i--) {
-                if (lines[i] ~ /^[[:space:]]*\}[[:space:]]*$/) {
-                    last_brace = i
-                    break
-                }
-            }
-            for (i = 1; i <= NR; i++) {
-                if (i == last_brace) {
-                    printf "    include %s;\n", snippet
-                }
-                print lines[i]
-            }
-        }
-        ' "$NGINX_CONF" > "${NGINX_CONF}.tmp"
-
-        mv "${NGINX_CONF}.tmp" "$NGINX_CONF"
-        NGINX_CHANGED=true
-        ok "Injected include into $NGINX_CONF"
-    fi
-fi
-
-if [ "$NGINX_CHANGED" = true ]; then
-    if nginx -t 2>/dev/null; then
-        nginx -s reload
-        ok "Nginx configuration valid — reloaded."
-    else
-        warn "Nginx configuration test failed. Check with:  nginx -t"
-        warn "A backup of the original config was saved as ${NGINX_CONF}.bak.*"
-    fi
-else
-    ok "Nginx configuration unchanged — reload skipped."
-fi
-
-# ---------------------------------------------------------------------------
 # Start service and health check
 # ---------------------------------------------------------------------------
 
@@ -334,7 +274,7 @@ MAX_TRIES=10
 while [ "$TRIES" -lt "$MAX_TRIES" ]; do
     TRIES=$((TRIES + 1))
     sleep 1
-    if curl -sf -o /dev/null "http://127.0.0.1:${PORT}/api/engines" 2>/dev/null; then
+    if curl -skf -o /dev/null "https://127.0.0.1:${PORT}/api/engines" 2>/dev/null; then
         HEALTHY=true
         break
     fi
@@ -384,10 +324,10 @@ fi
 echo ""
 echo "  Open the PMM Integration UI in your browser:"
 echo ""
-echo "    https://${PUBLIC_IP}/integration/"
+echo "    https://${PUBLIC_IP}:${PORT}/"
 echo ""
-echo "  The app is served through Nginx on the same port as PMM."
-echo "  No extra firewall rules are needed."
+echo "  The browser will show a certificate warning because the TLS"
+echo "  certificate is self-signed. This is safe to accept."
 echo ""
 echo "  Service management:"
 echo "    systemctl status  $SERVICE_NAME"
@@ -395,5 +335,5 @@ echo "    systemctl restart $SERVICE_NAME"
 echo "    journalctl -u $SERVICE_NAME -f"
 echo ""
 echo "  Install directory: $INSTALL_DIR"
-echo "  Nginx snippet:     $NGINX_SNIPPET"
+echo "  TLS certificate:   $CERT_DIR/"
 echo "=============================================="

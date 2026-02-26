@@ -3,11 +3,14 @@ PMM Integration Web Application
 ================================
 Web interface for connecting DigitalOcean Managed Databases to Percona PMM.
 Supports PostgreSQL and MySQL, with MongoDB planned for a future release.
+
+Serves HTTPS directly — no reverse proxy required.
 """
 
 import os
 import logging
 import socket
+import ssl
 
 import requests
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
@@ -18,26 +21,7 @@ from integrations.base import DO_API_BASE, PmmServer
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
-
-class ReverseProxied:
-    """WSGI middleware that honours the X-Script-Name header set by a reverse
-    proxy (Nginx) so Flask generates correct URLs under a sub-path."""
-
-    def __init__(self, wsgi_app):
-        self.wsgi_app = wsgi_app
-
-    def __call__(self, environ, start_response):
-        script_name = environ.get("HTTP_X_SCRIPT_NAME", "")
-        if script_name:
-            environ["SCRIPT_NAME"] = script_name
-            path_info = environ.get("PATH_INFO", "")
-            if path_info.startswith(script_name):
-                environ["PATH_INFO"] = path_info[len(script_name):]
-        return self.wsgi_app(environ, start_response)
-
-
 app = Flask(__name__)
-app.wsgi_app = ReverseProxied(app.wsgi_app)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(32))
 
 logging.basicConfig(level=logging.INFO)
@@ -49,7 +33,6 @@ PMM_BASE_URL = os.environ.get("PMM_BASE_URL", "https://127.0.0.1:443")
 def get_public_ipv4():
     """Detect the droplet's public IPv4 via the DO metadata service, falling
     back to an external resolver, then to the default-route interface address."""
-    # DigitalOcean metadata endpoint (available on every Droplet)
     try:
         r = requests.get(
             "http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address",
@@ -60,7 +43,6 @@ def get_public_ipv4():
     except Exception:
         pass
 
-    # Generic external resolver
     for url in ("https://api.ipify.org", "https://ifconfig.me/ip"):
         try:
             r = requests.get(url, timeout=3)
@@ -69,7 +51,6 @@ def get_public_ipv4():
         except Exception:
             continue
 
-    # Default-route interface address
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -309,16 +290,29 @@ def engines():
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    host = os.environ.get("LISTEN_HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", 8443))
+    host = os.environ.get("LISTEN_HOST", "0.0.0.0")
     debug = os.environ.get("FLASK_DEBUG", "0") == "1"
     public_ip = get_public_ipv4()
+
+    cert_dir = os.environ.get("TLS_CERT_DIR", os.path.join(os.path.dirname(__file__), "certs"))
+    cert_file = os.path.join(cert_dir, "cert.pem")
+    key_file = os.path.join(cert_dir, "key.pem")
+
+    ssl_ctx = None
+    if os.path.isfile(cert_file) and os.path.isfile(key_file):
+        ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_ctx.load_cert_chain(cert_file, key_file)
+        proto = "https"
+    else:
+        log.warning("TLS certificate not found at %s — falling back to HTTP.", cert_dir)
+        proto = "http"
 
     print(f"\n{'=' * 60}")
     print(f"  PMM Integration Web Application")
     print(f"  Listening on {host}:{port}")
-    print(f"  Public URL:  https://{public_ip}/integration/")
-    print(f"  Local URL:   http://127.0.0.1:{port}")
+    print(f"  Public URL:  {proto}://{public_ip}:{port}/")
+    print(f"  Local URL:   {proto}://127.0.0.1:{port}/")
     print(f"{'=' * 60}\n")
 
-    app.run(host=host, port=port, debug=debug)
+    app.run(host=host, port=port, debug=debug, ssl_context=ssl_ctx)

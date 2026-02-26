@@ -97,6 +97,26 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Firewall — open the HTTPS port
+# ---------------------------------------------------------------------------
+
+if command -v ufw >/dev/null 2>&1; then
+    if ufw status 2>/dev/null | grep -q "Status: active"; then
+        if ufw status | grep -q "${PORT}/tcp"; then
+            ok "Firewall already allows port ${PORT}/tcp — skipped."
+        else
+            info "Opening port ${PORT}/tcp in ufw..."
+            ufw allow "${PORT}/tcp" >/dev/null
+            ok "Firewall rule added: allow ${PORT}/tcp."
+        fi
+    else
+        ok "ufw is not active — no firewall rule needed."
+    fi
+else
+    ok "ufw not installed — skipping firewall configuration."
+fi
+
+# ---------------------------------------------------------------------------
 # Clone / update the repository
 # ---------------------------------------------------------------------------
 

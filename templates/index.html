@@ -43,6 +43,11 @@
           <h2 class="panel-title">Connect Your Accounts</h2>
           <p class="panel-desc">Provide your DigitalOcean API token and PMM admin password so the application can discover your managed databases and register them with PMM.</p>
 
+          <div class="security-notice">
+            <svg class="security-notice-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <p>Your credentials are <strong>never stored on disk</strong> and are <strong>never sent to any third party</strong>. They are held in browser memory only for the duration of this session and are discarded when you close the page.</p>
+          </div>
+
           <div class="form-group">
             <label for="do-token">DigitalOcean API Token</label>
             <div class="input-wrap">

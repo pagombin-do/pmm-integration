@@ -128,3 +128,34 @@ class BaseIntegration(ABC):
             }
         except OSError as exc:
             return {"success": False, "message": str(exc)}
+
+    @staticmethod
+    def remove_from_pmm(pmm, service_name):
+        pmm_admin = pmm.get_pmm_admin_cmd()
+        if not pmm_admin:
+            return {
+                "success": False,
+                "message": "pmm-admin not found. Install the PMM client or set PMM_ADMIN_CMD.",
+            }
+
+        server_url = pmm.build_server_url()
+        cmd = pmm_admin + [
+            "remove",
+            service_name,
+            f"--server-url={server_url}",
+            "--server-insecure-tls",
+        ]
+
+        try:
+            out = subprocess.check_output(
+                cmd, stderr=subprocess.STDOUT, universal_newlines=True
+            )
+            return {"success": True, "output": out}
+        except subprocess.CalledProcessError as exc:
+            return {
+                "success": False,
+                "message": f"pmm-admin remove failed (exit {exc.returncode})",
+                "output": exc.output,
+            }
+        except OSError as exc:
+            return {"success": False, "message": str(exc)}

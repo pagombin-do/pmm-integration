@@ -83,7 +83,12 @@ class BaseIntegration(ABC):
             existing = self._get_existing_user(do_token, db_id, username)
             if existing:
                 return existing
-            return {"error": f"User '{username}' already exists but could not retrieve details. Reset the user password in the DO control panel."}
+            return {
+                "error": "user_exists",
+                "username": username,
+                "db_id": db_id,
+                "db_name": db_name,
+            }
         r.raise_for_status()
         user = r.json()["user"]
         return {"username": user["name"], "password": user["password"]}
@@ -131,8 +136,13 @@ class BaseIntegration(ABC):
 
     @staticmethod
     def remove_from_pmm(pmm, service_type, service_name):
-        """Remove a service from PMM.  service_type is one of:
-        postgresql, mysql, mongodb, proxysql, haproxy, external."""
+        """Remove a service from PMM.
+
+        For postgresql and mysql the command is:
+            pmm-admin remove <service-type> <service-name>
+        For mongodb (future) it is just:
+            pmm-admin remove <service-name>
+        """
         pmm_admin = pmm.get_pmm_admin_cmd()
         if not pmm_admin:
             return {
@@ -140,15 +150,10 @@ class BaseIntegration(ABC):
                 "message": "pmm-admin not found. Install the PMM client or set PMM_ADMIN_CMD.",
             }
 
-        server_url = pmm.build_server_url()
-        cmd = pmm_admin + [
-            "remove",
-            service_type,
-            service_name,
-            "--force",
-            f"--server-url={server_url}",
-            "--server-insecure-tls",
-        ]
+        if service_type in ("postgresql", "mysql"):
+            cmd = pmm_admin + ["remove", service_type, service_name]
+        else:
+            cmd = pmm_admin + ["remove", service_name]
 
         try:
             out = subprocess.check_output(

@@ -25,20 +25,16 @@ class MySQLIntegration(BaseIntegration):
         ]
 
     def post_add_instructions(self, instance):
-        host = instance["host"]
-        port = instance["port"]
-        username = instance.get("username", "pmm_monitor")
-        return [
-            "Run the following on the PMM server to grant monitoring permissions:",
-            f"  apt install -y mysql-client",
-            (
-                f"  mysql -h {host} -P {port} -u doadmin -p --ssl-mode=REQUIRED "
-                f'-e "GRANT SELECT, PROCESS, REPLICATION CLIENT ON *.* TO \'{username}\'@\'%\'; '
-                f"GRANT SELECT ON performance_schema.* TO '{username}'@'%';\""
+        return {
+            "steps": [],
+            "note": (
+                "No additional setup is required for DigitalOcean Managed MySQL. "
+                "The monitoring user created via the DO API already has the "
+                "necessary permissions for PMM to collect metrics and query "
+                "analytics.\n\n"
+                "Node Summary metrics (CPU, RAM, disk) are not available for "
+                "DigitalOcean Managed MySQL because node_exporter cannot be "
+                "installed on the managed host. Database metrics and query "
+                "analytics will still be collected."
             ),
-            "",
-            "Note: Node Summary metrics (CPU, RAM, disk) are not available for",
-            "DigitalOcean Managed MySQL because node_exporter cannot be installed",
-            "on the managed host. Database metrics and query analytics will still",
-            "be collected.",
-        ]
+        }

@@ -7,5 +7,6 @@ dist/
 build/
 .venv/
 venv/
+certs/
 .installed-version
 .requirements-hash

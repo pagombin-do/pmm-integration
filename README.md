@@ -33,12 +33,12 @@ curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/ins
 
 This will:
 
-1. Install Python 3, pip, venv, and git (if not already present)
+1. Install Python 3, pip, venv, git, and openssl (if not already present)
 2. Clone the repository into `/opt/pmm-integration`
 3. Create a Python virtual environment and install dependencies
-4. Create and start a `pmm-integration` systemd service (localhost only)
-5. Configure Nginx to reverse-proxy `/integration/` to the Flask backend
-6. Print the public URL you can open in your browser
+4. Generate a self-signed TLS certificate (valid 10 years)
+5. Create and start a `pmm-integration` systemd service on port **8443**
+6. Print the public HTTPS URL you can open in your browser
 
 ### Option B — Download and Review First
 
@@ -59,6 +59,13 @@ python3 -m venv venv
 . venv/bin/activate
 pip install -r requirements.txt
 
+# Generate a self-signed TLS certificate
+mkdir -p certs
+openssl req -x509 -newkey rsa:2048 -nodes \
+    -keyout certs/key.pem -out certs/cert.pem \
+    -days 3650 -subj "/CN=pmm-integration" \
+    -addext "subjectAltName=IP:127.0.0.1,DNS:localhost"
+
 python3 app.py
 ```
 
@@ -66,29 +73,17 @@ python3 app.py
 
 ## Accessing the UI
 
-After installation the app is served through the **existing Nginx** that ships
-with the PMM Marketplace image — no extra ports or firewall rules are needed:
+After installation the app serves HTTPS directly on port **8443**:
 
 ```
-https://<your_droplet_public_ipv4>/integration/
+https://<your_droplet_public_ipv4>:8443/
 ```
 
-### How it works
+Your browser will show a certificate warning because the TLS certificate is
+self-signed. This is expected and safe to accept.
 
-The PMM 1-Click image already runs Nginx on ports 80/443 to serve the PMM UI.
-The installer adds a small location block that proxies `/integration/` to the
-Flask backend on `127.0.0.1:5000`:
-
-```
-Browser                    Nginx (443)              Flask (127.0.0.1:5000)
-  │                           │                           │
-  ├── GET /integration/ ─────►├── proxy_pass ────────────►├── /
-  │                           │   X-Script-Name:          │
-  │◄──────────────────────────┤   /integration            │
-```
-
-The Flask app never listens on a public interface — all external traffic flows
-through Nginx, sharing the same TLS certificate PMM already uses.
+> **Firewall note:** If you have a DigitalOcean Cloud Firewall or `ufw`
+> enabled, ensure port **8443** (TCP) is open for inbound traffic.
 
 ---
 
@@ -105,7 +100,8 @@ systemctl stop    pmm-integration
 
 ## Updating
 
-Re-run the installer — it pulls the latest code and restarts the service:
+Re-run the installer — it pulls the latest code and restarts the service.
+The TLS certificate and venv are preserved unless they need rebuilding:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/pagombin-do/pmm-integration/main/install.sh | sh
@@ -127,8 +123,9 @@ systemctl restart pmm-integration
 
 | Variable                  | Description                              | Default                    |
 |---------------------------|------------------------------------------|----------------------------|
-| `PORT`                    | Internal listen port                     | `5000`                     |
-| `LISTEN_HOST`             | Bind address                             | `127.0.0.1`               |
+| `PORT`                    | HTTPS listen port                        | `8443`                     |
+| `LISTEN_HOST`             | Bind address                             | `0.0.0.0`                 |
+| `TLS_CERT_DIR`            | Directory containing cert.pem / key.pem  | `./certs`                  |
 | `FLASK_DEBUG`             | Set to `1` for debug mode                | `0`                        |
 | `FLASK_SECRET_KEY`        | Flask session secret                     | Random bytes               |
 | `PMM_BASE_URL`            | PMM server base URL                      | `https://127.0.0.1:443`   |
@@ -140,6 +137,21 @@ systemctl edit pmm-integration
 ```
 
 Add overrides under `[Service]`, then `systemctl restart pmm-integration`.
+
+---
+
+## TLS Certificate
+
+The installer generates a self-signed certificate at
+`/opt/pmm-integration/certs/` with a 10-year validity. To replace it with
+your own certificate:
+
+```bash
+cp /path/to/your/cert.pem /opt/pmm-integration/certs/cert.pem
+cp /path/to/your/key.pem  /opt/pmm-integration/certs/key.pem
+chmod 600 /opt/pmm-integration/certs/key.pem
+systemctl restart pmm-integration
+```
 
 ---
 
@@ -159,41 +171,16 @@ Add overrides under `[Service]`, then `systemctl restart pmm-integration`.
 
 ---
 
-## Nginx Configuration Details
-
-The installer creates two things:
-
-1. **`/etc/nginx/pmm-integration.conf`** — a location snippet:
-
-```nginx
-location /integration/ {
-    proxy_pass         http://127.0.0.1:5000/;
-    proxy_set_header   Host              $host;
-    proxy_set_header   X-Real-IP         $remote_addr;
-    proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
-    proxy_set_header   X-Forwarded-Proto $scheme;
-    proxy_set_header   X-Script-Name     /integration;
-    proxy_http_version 1.1;
-    proxy_read_timeout 90s;
-}
-```
-
-2. **An `include` directive** injected into the PMM Nginx server block
-   (`/etc/nginx/conf.d/pmm.conf` or equivalent) that loads the snippet above.
-
-A backup of the original config is saved before any modification. If the
-installer cannot locate the Nginx config file it will print the snippet and
-ask you to include it manually.
-
----
-
 ## Architecture
 
 ```
 /opt/pmm-integration/
-├── app.py                  # Flask application & API routes
+├── app.py                  # Flask application & API routes (serves HTTPS)
 ├── install.sh              # One-line installer for PMM Droplets
 ├── requirements.txt        # Python dependencies
+├── certs/                  # TLS certificate (generated at install time)
+│   ├── cert.pem
+│   └── key.pem
 ├── integrations/
 │   ├── __init__.py         # Engine registry
 │   ├── base.py             # PmmServer + BaseIntegration ABC
@@ -211,8 +198,8 @@ ask you to include it manually.
 
 ## Security Considerations
 
-- The Flask backend listens only on `127.0.0.1` — it is not directly reachable
-  from the internet.  All external access goes through Nginx with TLS.
+- The app serves HTTPS with a self-signed certificate. Replace it with a
+  proper certificate for production use, or restrict access by IP.
 - Rotate API tokens periodically and use least-privilege tokens when possible.
 - Restrict DigitalOcean Trusted Sources to only the PMM Droplet IP.
 - Change the default PMM `admin` password immediately after deployment.

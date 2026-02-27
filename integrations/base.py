@@ -56,18 +56,18 @@ class PmmServer:
         return url
 
     def pmm_admin_status(self, pmm_admin):
-    """
-    Run `pmm-admin status` and return (returncode, combined_output).
-    IMPORTANT: `pmm-admin status` exits non-zero when pmm-agent is 'not set up'.
-    """
-    cmd = list(pmm_admin) + ["status"]
-    proc = subprocess.run(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    return proc.returncode, (proc.stdout or "")
+        """
+        Run `pmm-admin status` and return (returncode, combined_output).
+        IMPORTANT: `pmm-admin status` exits non-zero when pmm-agent is 'not set up'.
+        """
+        cmd = list(pmm_admin) + ["status"]
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        return proc.returncode, (proc.stdout or "")
 
     @staticmethod
     def _status_connected(status_output: str) -> bool:

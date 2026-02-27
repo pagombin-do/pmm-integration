@@ -90,8 +90,8 @@ class PmmServer:
     def ensure_pmm_client_configured(self, pmm_admin, node_name: str = "127.0.0.1"):
         """
         1) Run pmm-admin status
-           - if Connected:true -> OK
-           - if 'not set up' -> run pmm-admin config using password from setup screen
+            - if Connected:true -> OK
+            - if 'not set up' -> run pmm-admin config using password from setup screen
         2) Re-run status; require Connected:true before proceeding
         """
         if not self.password:

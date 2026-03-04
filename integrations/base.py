@@ -80,9 +80,6 @@ class BaseIntegration(ABC):
             json=payload,
         )
         if r.status_code == 409:
-            existing = self._get_existing_user(do_token, db_id, username)
-            if existing:
-                return existing
             return {
                 "error": "user_exists",
                 "username": username,

@@ -53,13 +53,17 @@ class MongoDBIntegration(BaseIntegration):
         The instance dict must include 'member_host', 'member_port',
         and 'cluster' in addition to the standard fields.
         """
+        member_host = instance['member_host']
+        service_name = member_host.split(".")[0]
+
         return pmm_admin + [
             "add",
             "mongodb",
             f"--username={instance['username']}",
             f"--password={instance['password']}",
-            f"--host={instance['member_host']}",
+            f"--host={member_host}",
             f"--port={instance['member_port']}",
+            f"--service-name={service_name}",
             f"--cluster={instance['cluster']}",
             "--enable-all-collectors",
             "--tls",

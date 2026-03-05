@@ -380,7 +380,19 @@
             <p class="hint" style="margin-bottom:0.65rem">The monitoring user <strong>pmm_monitor</strong> will be created automatically via the DigitalOcean API. Your API token must have <strong>write</strong> permissions.</p>
             <button class="btn btn-sm btn-success btn-create-user" data-db-id="${db.id}" data-db-name="${db.name}">Create User Now</button>
           ` : `
-            <p class="hint" style="margin-bottom:0.65rem">Enter the credentials of an existing monitoring user.</p>
+            ${cred.showExistsHelp ? `
+              <div class="user-exists-notice">
+                <p class="user-exists-title">User "${cred.username}" already exists on "${db.name}"</p>
+                <p>Enter the password for the existing <strong>${cred.username}</strong> user below.</p>
+                <p class="user-exists-help-title">How to find the password:</p>
+                <ul>
+                  <li><strong>DigitalOcean UI:</strong> Go to <a href="https://cloud.digitalocean.com/databases" target="_blank" rel="noopener">Databases</a> &rarr; select <em>${db.name}</em> &rarr; <em>Users &amp; Databases</em> tab &rarr; click <em>show-password</em> next to <strong>${cred.username}</strong>.</li>
+                  <li><strong>DigitalOcean API:</strong><br><code>curl -s -H "Authorization: Bearer $DIGITALOCEAN_API_TOKEN" "https://api.digitalocean.com/v2/databases/${db.id}/users/${cred.username}" | jq '.user.password'</code></li>
+                </ul>
+              </div>
+            ` : `
+              <p class="hint" style="margin-bottom:0.65rem">Enter the credentials of an existing monitoring user.</p>
+            `}
             <div class="form-row">
               <div class="form-group" style="margin-bottom:0">
                 <label>Username</label>
@@ -426,6 +438,12 @@
     });
   }
 
+  function isUserExistsError(res) {
+    if (res.error_code === "user_exists") return true;
+    const msg = (res.message || "").toLowerCase();
+    return msg.includes("already exist");
+  }
+
   async function handleAutoCreate(db, btn) {
     const key = db.id;
     const statusEl = $(`.user-status[data-db-id="${db.id}"]`);
@@ -452,21 +470,17 @@
       btn.textContent = "User Created";
       btn.disabled = true;
       toast(`User "${res.username}" created for ${db.name}`, "success");
-    } else if (res.error_code === "user_exists") {
+    } else if (isUserExistsError(res)) {
       const username = res.username || "pmm_monitor";
-      statusEl.className = "user-status";
-      statusEl.innerHTML = `
-        <div class="user-exists-notice">
-          <p class="user-exists-title">User "${username}" already exists on "${db.name}"</p>
-          <p>Switch to <strong>Manual</strong> mode above and enter the existing user's credentials.</p>
-          <p class="user-exists-help-title">How to find the password:</p>
-          <ul>
-            <li><strong>DigitalOcean UI:</strong> Go to <a href="https://cloud.digitalocean.com/databases" target="_blank" rel="noopener">Databases</a> &rarr; select <em>${db.name}</em> &rarr; <em>Users &amp; Databases</em> tab &rarr; click <em>show-password</em> next to <strong>${username}</strong>.</li>
-            <li><strong>DigitalOcean API:</strong><br><code>curl -s -H "Authorization: Bearer $DIGITALOCEAN_API_TOKEN" "https://api.digitalocean.com/v2/databases/${db.id}/users/${username}" | jq '.user.password'</code></li>
-          </ul>
-        </div>
-      `;
-      state.userCredentials[key] = { mode: "auto", username: username, password: "", ready: false };
+      state.userCredentials[key] = {
+        mode: "manual",
+        username: username,
+        password: "",
+        ready: false,
+        showExistsHelp: true,
+      };
+      renderUserSections();
+      toast(`User "${username}" already exists on ${db.name} — enter the password manually.`, "warning", 6000);
     } else {
       fieldStatus(statusEl, "err", res.message || "Failed to create user.");
       toast(res.message || "Failed to create user.", "error");

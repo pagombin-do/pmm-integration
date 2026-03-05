@@ -79,13 +79,27 @@ class BaseIntegration(ABC):
             headers=headers,
             json=payload,
         )
+
+        already_exists = False
         if r.status_code == 409:
+            already_exists = True
+        elif r.status_code >= 400:
+            body_text = ""
+            try:
+                body_text = r.json().get("message", r.text)
+            except Exception:
+                body_text = r.text
+            if "already exist" in body_text.lower():
+                already_exists = True
+
+        if already_exists:
             return {
                 "error": "user_exists",
                 "username": username,
                 "db_id": db_id,
                 "db_name": db_name,
             }
+
         r.raise_for_status()
         user = r.json()["user"]
         return {"username": user["name"], "password": user["password"]}

@@ -239,13 +239,7 @@ class BaseIntegration(ABC):
 
     @staticmethod
     def remove_from_pmm(pmm, service_type, service_name):
-        """Remove a service from PMM.
-
-        For postgresql and mysql the command is:
-            pmm-admin remove <service-type> <service-name>
-        For mongodb (future) it is just:
-            pmm-admin remove <service-name>
-        """
+        """Remove a single service: pmm-admin remove <type> <name>."""
         pmm_admin = pmm.get_pmm_admin_cmd()
         if not pmm_admin:
             return {
@@ -253,10 +247,7 @@ class BaseIntegration(ABC):
                 "message": "pmm-admin not found. Install the PMM client or set PMM_ADMIN_CMD.",
             }
 
-        if service_type in ("postgresql", "mysql"):
-            cmd = pmm_admin + ["remove", service_type, service_name]
-        else:
-            cmd = pmm_admin + ["remove", service_name]
+        cmd = pmm_admin + ["remove", service_type, service_name]
 
         try:
             out = subprocess.check_output(
@@ -271,3 +262,65 @@ class BaseIntegration(ABC):
             }
         except OSError as exc:
             return {"success": False, "message": str(exc)}
+
+    @staticmethod
+    def remove_cluster_from_pmm(pmm, cluster_name):
+        """Remove all MongoDB services belonging to a cluster.
+
+        Queries PMM for services matching the cluster name, then removes
+        each one.  Handles the case where member hostnames may have changed
+        since the cluster name is the stable identifier.
+        """
+        pmm_admin = pmm.get_pmm_admin_cmd()
+        if not pmm_admin:
+            return {
+                "success": False,
+                "message": "pmm-admin not found. Install the PMM client or set PMM_ADMIN_CMD.",
+            }
+
+        try:
+            svcs = pmm.list_services()
+        except Exception as exc:
+            return {"success": False, "message": f"Could not list PMM services: {exc}"}
+
+        members_to_remove = []
+        for key in ("mongodb", "services"):
+            val = svcs.get(key)
+            if isinstance(val, list):
+                for s in val:
+                    if isinstance(s, dict) and s.get("cluster") == cluster_name:
+                        svc_name = s.get("service_name", "")
+                        if svc_name:
+                            members_to_remove.append(svc_name)
+
+        if not members_to_remove:
+            return {
+                "success": False,
+                "message": f"No services found in PMM for cluster '{cluster_name}'.",
+            }
+
+        results = []
+        all_ok = True
+        for svc_name in members_to_remove:
+            cmd = pmm_admin + ["remove", "mongodb", svc_name]
+            try:
+                out = subprocess.check_output(
+                    cmd, stderr=subprocess.STDOUT, universal_newlines=True
+                )
+                results.append(f"[OK] {svc_name}: {out.strip()}")
+            except subprocess.CalledProcessError as exc:
+                all_ok = False
+                results.append(f"[FAILED] {svc_name}: {exc.output.strip()}")
+            except OSError as exc:
+                all_ok = False
+                results.append(f"[FAILED] {svc_name}: {exc}")
+
+        output = f"Cluster: {cluster_name}\n"
+        output += f"Members removed: {sum(1 for r in results if r.startswith('[OK]'))}/{len(members_to_remove)}\n\n"
+        output += "\n".join(results)
+
+        return {
+            "success": all_ok,
+            "message": "" if all_ok else "Some members failed to remove.",
+            "output": output,
+        }

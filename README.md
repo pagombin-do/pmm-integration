@@ -5,11 +5,11 @@ Web application for connecting DigitalOcean Managed Databases to
 
 ## Supported Engines
 
-| Engine     | Status        |
-|------------|---------------|
-| PostgreSQL | Supported     |
-| MySQL      | Supported     |
-| MongoDB    | Coming Soon   |
+| Engine     | Status    |
+|------------|-----------|
+| PostgreSQL | Supported |
+| MySQL      | Supported |
+| MongoDB    | Supported |
 
 ## Prerequisites
 
@@ -37,8 +37,13 @@ This will:
 2. Clone the repository into `/opt/pmm-integration`
 3. Create a Python virtual environment and install dependencies
 4. Generate a self-signed TLS certificate (valid 10 years)
-5. Create and start a `pmm-integration` systemd service on port **8443**
-6. Print the public HTTPS URL you can open in your browser
+5. Open port 8443 in `ufw` (if active)
+6. Create and start a `pmm-integration` systemd service on port **8443**
+7. Print the public HTTPS URL you can open in your browser
+
+The installer is **idempotent** — safe to run multiple times. On re-run it
+pulls the latest code, rebuilds the venv only if needed, preserves the TLS
+certificate, and performs a health check after restarting the service.
 
 ### Option B — Download and Review First
 
@@ -82,8 +87,64 @@ https://<your_droplet_public_ipv4>:8443/
 Your browser will show a certificate warning because the TLS certificate is
 self-signed. This is expected and safe to accept.
 
-> **Firewall note:** If you have a DigitalOcean Cloud Firewall or `ufw`
-> enabled, ensure port **8443** (TCP) is open for inbound traffic.
+> **Firewall note:** The installer automatically opens port 8443 in `ufw` if
+> it is active. If you use a DigitalOcean Cloud Firewall, add an inbound rule
+> for TCP 8443.
+
+---
+
+## How It Works
+
+### Step 1 — Credentials
+
+Enter your DigitalOcean API token and PMM admin password. Both are validated
+against their respective APIs before proceeding. Credentials are **never
+stored on disk** — they are held in browser memory only for the session.
+
+### Step 2 — Engine
+
+Select the database engine: **PostgreSQL**, **MySQL**, or **MongoDB**.
+Optionally toggle the private (VPC) endpoint.
+
+### Step 3 — Databases
+
+The app queries the DigitalOcean API and lists your managed databases for the
+chosen engine. Each database shows its region, connection endpoint, node
+count, and status. Databases that are not online (e.g. creating, migrating)
+are disabled and cannot be selected. Already-monitored databases show a
+**Remove** button to delete the integration.
+
+### Step 4 — Monitoring User
+
+Create a `pmm_monitor` user automatically via the DigitalOcean API (requires
+a write-permission token), or provide existing credentials manually. If the
+user already exists, the UI automatically switches to manual mode and shows
+instructions for retrieving the password from the DigitalOcean control panel
+or API.
+
+### Step 5 — Integrate
+
+The app registers the selected databases with PMM:
+
+| Engine     | What happens |
+|------------|---|
+| PostgreSQL | Runs `pmm-admin add postgresql` with TLS and QAN (`pgstatements`). Post-steps guide you through installing `postgresql-client` and enabling `pg_stat_statements`. |
+| MySQL      | Runs `pmm-admin add mysql` with TLS and QAN (`perfschema`). No additional setup needed — the DO-managed user has sufficient permissions. |
+| MongoDB    | Connects via the SRV URI, runs `rs.status()` to discover every replica-set member, then runs `pmm-admin add mongodb` for **each member** individually with `--cluster`, `--enable-all-collectors`, and `--tls`. Each member gets a unique service name derived from its hostname. |
+
+---
+
+## Removing an Integration
+
+In Step 3, monitored databases show a **Remove** button. Clicking it runs:
+
+| Engine     | Command |
+|------------|---------|
+| PostgreSQL | `pmm-admin remove postgresql <service-name>` |
+| MySQL      | `pmm-admin remove mysql <service-name>` |
+| MongoDB    | `pmm-admin remove <service-name>` |
+
+After removal the database becomes selectable again for re-integration.
 
 ---
 
@@ -155,38 +216,22 @@ systemctl restart pmm-integration
 
 ---
 
-## How It Works
-
-1. **Credentials** — Enter your DigitalOcean API token and PMM admin password.
-   Both are validated against their respective APIs before proceeding.
-2. **Engine** — Select the database engine (PostgreSQL, MySQL, or see MongoDB
-   as "Coming Soon").  Optionally toggle the private (VPC) endpoint.
-3. **Databases** — The app queries the DO API and lists your managed databases
-   for the chosen engine.  Already-monitored databases are flagged.
-4. **Monitoring User** — Create a `pmm_monitor` user automatically via the DO
-   API (requires write-permission token), or provide existing credentials.
-5. **Integrate** — The app runs `pmm-admin add` with TLS and query analytics
-   enabled.  Post-integration steps are displayed so you can grant the
-   necessary monitoring permissions on each database.
-
----
-
 ## Architecture
 
 ```
 /opt/pmm-integration/
 ├── app.py                  # Flask application & API routes (serves HTTPS)
 ├── install.sh              # One-line installer for PMM Droplets
-├── requirements.txt        # Python dependencies
+├── requirements.txt        # Python dependencies (flask, requests, pymongo)
 ├── certs/                  # TLS certificate (generated at install time)
 │   ├── cert.pem
 │   └── key.pem
 ├── integrations/
 │   ├── __init__.py         # Engine registry
 │   ├── base.py             # PmmServer + BaseIntegration ABC
-│   ├── postgresql.py       # PostgreSQL integration
-│   ├── mysql.py            # MySQL integration
-│   └── mongodb.py          # MongoDB placeholder
+│   ├── postgresql.py       # PostgreSQL: TLS + QAN via pgstatements
+│   ├── mysql.py            # MySQL: TLS + QAN via perfschema
+│   └── mongodb.py          # MongoDB: SRV connect, rs.status(), per-member add
 ├── templates/
 │   └── index.html          # Main HTML template
 └── static/
@@ -198,6 +243,8 @@ systemctl restart pmm-integration
 
 ## Security Considerations
 
+- Credentials entered in the UI are **never persisted to disk** and are held
+  in browser memory only for the duration of the session.
 - The app serves HTTPS with a self-signed certificate. Replace it with a
   proper certificate for production use, or restrict access by IP.
 - Rotate API tokens periodically and use least-privilege tokens when possible.

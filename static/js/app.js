@@ -536,34 +536,49 @@
         icon.innerHTML =
           '<path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
         output.textContent = res.output || "Successfully added to PMM.";
-
-        if (res.post_steps) {
-          const ps = document.createElement("div");
-          ps.className = "post-steps";
-          let html = '<div class="post-steps-title">Post-Integration Steps</div>';
-
-          if (res.post_steps.steps && res.post_steps.steps.length) {
-            res.post_steps.steps.forEach((step) => {
-              html += `<div class="post-step-item">`;
-              html += `<div class="post-step-heading">${step.title}</div>`;
-              html += `<p class="post-step-desc">${step.description}</p>`;
-              html += `<pre class="post-step-cmd">${step.command}</pre>`;
-              html += `</div>`;
-            });
-          }
-
-          if (res.post_steps.note) {
-            html += `<div class="post-step-note">${res.post_steps.note}</div>`;
-          }
-
-          ps.innerHTML = html;
-          card.appendChild(ps);
-        }
       } else {
         icon.classList.add("fail");
         icon.innerHTML =
           '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>';
         output.textContent = res.message + (res.output ? "\n\n" + res.output : "");
+      }
+
+      if (res.member_results && res.member_results.length) {
+        const mw = document.createElement("div");
+        mw.className = "member-results";
+        mw.innerHTML = `<div class="member-results-title">Replica Set Members (${res.member_results.length})</div>`;
+        res.member_results.forEach((mr) => {
+          const s = mr.success ? "ok" : "fail";
+          mw.innerHTML += `
+            <div class="member-row member-${s}">
+              <span class="member-status">${mr.success ? "OK" : "FAIL"}</span>
+              <span class="member-name">${mr.member}</span>
+            </div>`;
+        });
+        card.appendChild(mw);
+      }
+
+      if (res.post_steps) {
+        const ps = document.createElement("div");
+        ps.className = "post-steps";
+        let html = '<div class="post-steps-title">Post-Integration Steps</div>';
+
+        if (res.post_steps.steps && res.post_steps.steps.length) {
+          res.post_steps.steps.forEach((step) => {
+            html += `<div class="post-step-item">`;
+            html += `<div class="post-step-heading">${step.title}</div>`;
+            html += `<p class="post-step-desc">${step.description}</p>`;
+            html += `<pre class="post-step-cmd">${step.command}</pre>`;
+            html += `</div>`;
+          });
+        }
+
+        if (res.post_steps.note) {
+          html += `<div class="post-step-note">${res.post_steps.note}</div>`;
+        }
+
+        ps.innerHTML = html;
+        card.appendChild(ps);
       }
     }
   }

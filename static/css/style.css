@@ -750,6 +750,59 @@ body {
   color: var(--color-text-secondary);
 }
 
+.member-results {
+  margin-top: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.member-results-title {
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.5rem 0.75rem;
+  background: var(--color-surface-raised);
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.82rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.member-row:last-child { border-bottom: none; }
+
+.member-status {
+  font-weight: 700;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.member-ok .member-status {
+  background: var(--color-success-light);
+  color: var(--color-success);
+}
+
+.member-fail .member-status {
+  background: var(--color-danger-light);
+  color: var(--color-danger);
+}
+
+.member-name {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-text);
+}
+
 .post-steps {
   margin-top: 0.75rem;
   padding: 0.75rem;

@@ -149,6 +149,7 @@ def list_databases():
 
     pmm = PmmServer(base_url=PMM_BASE_URL, password=pmm_password)
     monitored_map = {}
+    monitored_clusters = set()
     try:
         svcs = pmm.list_services()
         for key in ("postgresql", "mysql", "mongodb", "services"):
@@ -160,6 +161,9 @@ def list_databases():
                         port = str(s.get("port", ""))
                         if addr:
                             monitored_map[f"{addr}:{port}"] = s.get("service_name", "")
+                        cluster = s.get("cluster", "")
+                        if cluster:
+                            monitored_clusters.add(cluster)
     except Exception:
         pass
 
@@ -175,8 +179,13 @@ def list_databases():
             host = conn.get("host", "")
             port = conn.get("port", "")
 
-        addr_key = f"{host}:{port}"
-        pmm_service_name = monitored_map.get(addr_key, "")
+        if engine_filter == "mongodb":
+            is_monitored = db["name"] in monitored_clusters
+            svc_name = db["name"] if is_monitored else ""
+        else:
+            addr_key = f"{host}:{port}"
+            svc_name = monitored_map.get(addr_key, "")
+            is_monitored = bool(svc_name)
 
         results.append({
             "id": db["id"],
@@ -187,8 +196,8 @@ def list_databases():
             "port": port,
             "num_nodes": db.get("num_nodes", 1),
             "status": db.get("status", "unknown"),
-            "monitored": bool(pmm_service_name),
-            "pmm_service_name": pmm_service_name,
+            "monitored": is_monitored,
+            "pmm_service_name": svc_name,
         })
 
     return jsonify(ok=True, databases=results)
@@ -251,7 +260,11 @@ def integrate():
     engine = data.get("engine", "pg")
     instance = data.get("instance", {})
 
-    required = ("name", "host", "port", "username", "password")
+    if engine == "mongodb":
+        required = ("name", "host", "username", "password")
+    else:
+        required = ("name", "host", "port", "username", "password")
+
     missing = [k for k in required if not instance.get(k)]
     if missing or not pmm_password:
         return jsonify(ok=False, message=f"Missing fields: {', '.join(missing) or 'pmm_password'}"), 400
@@ -267,12 +280,17 @@ def integrate():
     result = integration.add_to_pmm(pmm, instance)
     post_steps = integration.post_add_instructions(instance)
 
-    return jsonify(
-        ok=result["success"],
-        message=result.get("message", ""),
-        output=result.get("output", ""),
-        post_steps=post_steps,
-    )
+    resp = {
+        "ok": result["success"],
+        "message": result.get("message", ""),
+        "output": result.get("output", ""),
+        "post_steps": post_steps,
+    }
+
+    if "member_results" in result:
+        resp["member_results"] = result["member_results"]
+
+    return jsonify(resp)
 
 
 # ---------------------------------------------------------------------------

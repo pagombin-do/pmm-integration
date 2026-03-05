@@ -323,7 +323,11 @@ def remove():
     from integrations.base import BaseIntegration
 
     pmm = PmmServer(base_url=PMM_BASE_URL, password=pmm_password)
-    result = BaseIntegration.remove_from_pmm(pmm, service_type, service_name)
+
+    if service_type == "mongodb":
+        result = BaseIntegration.remove_cluster_from_pmm(pmm, service_name)
+    else:
+        result = BaseIntegration.remove_from_pmm(pmm, service_type, service_name)
 
     return jsonify(
         ok=result["success"],
